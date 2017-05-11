@@ -1,0 +1,10 @@
+hash: af245d57c52b3503d88e7f72963cc148c9e2b329a1db1d9d6031e92be66f2540
+updated: 2017-05-11T08:45:52.388802416+02:00
+imports:
+- name: github.com/lib/pq
+  version: 2704adc878c21e1329f46f6e56a1c387d788ff94
+  subpackages:
+  - oid
+- name: github.com/namsral/flag
+  version: 7fa59bdb55485001d702d9b6e15367cdf26bfde8
+testImports: []
