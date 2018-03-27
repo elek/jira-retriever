@@ -8,7 +8,7 @@ A selector could be used to differentiate multiple query.
 
 
 ```
-CREATE TABLE public.jira
+CREATE TABLE jiraissues
 (
     key character varying COLLATE pg_catalog."default" NOT NULL,
     updated timestamp with time zone NOT NULL,

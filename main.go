@@ -13,7 +13,6 @@ import (
 )
 
 type config struct {
-
 }
 
 type JiraQueryResult struct {
@@ -54,20 +53,22 @@ func main() {
 	flag.StringVar(&jiraConfig.Username, "jusername", "username", "Username for the jira")
 	flag.StringVar(&jiraConfig.Password, "jpassword", "password", "Password for the jira")
 
-	flag.StringVar(&selector, "selector", "default", "Selector for the postgres db")
+	flag.StringVar(&selector, "selector", "default", "Selector for the postgres Db")
 	flag.IntVar(&ratelimit, "ratelimit", 10, "Limit the requests to 1 request/ratelimit sec.")
 	flag.StringVar(&queryFragment, "jql", "", "Custom JQL fragment to add to the query")
 	flag.Parse()
-	db, err := sql.Open("postgres", "postgres://" + pgConfig.Username + ":" + pgConfig.Password + "@" + pgConfig.Host + "/" + pgConfig.Db + "?sslmode=disable")
+	db, err := sql.Open("postgres", "postgres://"+pgConfig.Username+":"+pgConfig.Password+"@"+pgConfig.Host+"/"+pgConfig.Db+"?sslmode=disable")
 	if err != nil {
 		panic("Can' open database " + err.Error())
 	}
 	defer db.Close()
 
+	dbAdapter := DbAdapter{Db: db}
+
 	lastJiraCall := time.Time{}
 	queryLoop := true
 	for queryLoop == true {
-		lastUpdated, err := getLastUpdated(db, pgConfig.Table, selector)
+		lastUpdated, err := dbAdapter.getLastUpdated(pgConfig.Table, selector)
 		if err != nil {
 			panic("Last update can' be determined " + err.Error())
 		}
@@ -75,7 +76,7 @@ func main() {
 		//throttle the queries
 		duration := time.Since(lastJiraCall)
 		if duration.Seconds() < float64(ratelimit) {
-			time.Sleep(time.Duration(ratelimit) * time.Second - duration)
+			time.Sleep(time.Duration(ratelimit)*time.Second - duration)
 		}
 
 		jsonContent := read_query(lastUpdated, jiraConfig, queryFragment)
@@ -99,11 +100,14 @@ func main() {
 			return
 		}
 
-		tx, err := db.Begin()
-		for r := 0; r < len(jsonResult.Issues); r++ {
-			saveIssue(db, tx, pgConfig.Table, jsonResult.Issues[r], selector)
+		err = dbAdapter.Begin()
+		if err != nil {
+			panic("Transaction couldn't been started")
 		}
-		err = tx.Commit()
+		for r := 0; r < len(jsonResult.Issues); r++ {
+			dbAdapter.saveIssue(pgConfig.Table, jsonResult.Issues[r], selector)
+		}
+		err = dbAdapter.Commit()
 		if err != nil {
 			panic("Commiting to the database was unsuccesfull " + err.Error())
 		}
@@ -122,7 +126,7 @@ func read_query(lastUpdated time.Time, jiraConfig JiraConfig, queryFragment stri
 	if len(queryFragment) > 0 {
 		query = queryFragment + " AND " + query
 	}
-	parameter := url.Values{"jql" : []string{query}, "expand":[]string{"changelog"}}
+	parameter := url.Values{"jql": []string{query}, "expand": []string{"changelog"}}
 	jiraUrl += "?" + parameter.Encode()
 
 	client := http.Client{}
@@ -146,40 +150,4 @@ func read_query(lastUpdated time.Time, jiraConfig JiraConfig, queryFragment stri
 	}
 	body, err := ioutil.ReadAll(response.Body)
 	return body
-}
-
-func saveIssue(db *sql.DB, tx *sql.Tx, tableName string, issue map[string]interface{}, selector string) error {
-	content, err := json.Marshal(issue);
-	if err != nil {
-		return err
-	}
-	key := issue["key"].(string)
-	fields := issue["fields"].(map[string]interface{})
-	updatedString := fields["updated"].(string)
-	updated, err := time.Parse("2006-01-02T15:04:05.000-0700", updatedString)
-	if (err != nil) {
-		panic("Time could not been parsed " + err.Error())
-	}
-
-	if err != nil {
-		print("Json can't be encoded " + err.Error())
-	}
-
-	_, err = tx.Exec("INSERT INTO " + tableName + " (key,value, updated, selector) values ($1,$2,$3,$4) ON CONFLICT (key) DO UPDATE SET value = $2,updated=$3", key, string(content), updated, selector)
-	if err != nil {
-		println("SQL ERROR " + err.Error())
-	}
-	println(key + " is updated")
-	return nil
-}
-func getLastUpdated(db *sql.DB, tableName string, selector string) (time.Time, error) {
-	result, err := db.Query("select updated from " + tableName + " WHERE selector = $1 order by updated desc limit 1", selector)
-	if (err != nil) {
-		return time.Now(), err
-	}
-	time := time.Time{}
-	result.Next()
-	result.Scan(&time)
-	return time, nil
-
 }
