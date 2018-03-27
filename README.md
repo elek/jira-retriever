@@ -8,6 +8,7 @@ A selector could be used to differentiate multiple query.
 
 
 ```
+
 CREATE TABLE jiraissues
 (
     key character varying COLLATE pg_catalog."default" NOT NULL,
@@ -16,4 +17,20 @@ CREATE TABLE jiraissues
     value jsonb NOT NULL,
     CONSTRAINT jira_pkey PRIMARY KEY (key)
 )
-````
+
+CREATE TABLE change
+(
+    id SERIAL,
+    created timestamp with time zone NOT NULL,
+    selector character varying,
+    toString character varying,
+    fromString character varying,
+    field character varying,
+    author_name character varying,
+    author_key character varying,
+    history_id int,
+    item_index int,
+    CONSTRAINT change_pid PRIMARY KEY (id)
+)
+
+```

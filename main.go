@@ -37,6 +37,17 @@ type PostgresConfig struct {
 	Table    string
 }
 
+type ChangeItem struct {
+	HistoryId  int
+	ItemIndex  int
+	FromString string
+	ToString   string
+	AuthorKey  string
+	AuthorName string
+	Created    time.Time
+	Field      string
+}
+
 func main() {
 	selector := "default"
 	var ratelimit int
@@ -106,12 +117,60 @@ func main() {
 		}
 		for r := 0; r < len(jsonResult.Issues); r++ {
 			dbAdapter.saveIssue(pgConfig.Table, jsonResult.Issues[r], selector)
+			processHistory(dbAdapter, jsonResult.Issues[r], selector);
 		}
 		err = dbAdapter.Commit()
 		if err != nil {
 			panic("Commiting to the database was unsuccesfull " + err.Error())
 		}
 		queryLoop = jsonResult.MaxResults < jsonResult.Total
+	}
+}
+
+func processHistory(adapter DbAdapter, issue map[string]interface{}, selector string) {
+
+	changelog := issue["changelog"].(map[string]interface{})
+	histories := changelog["histories"].([]interface{})
+	for _, historyRaw := range histories {
+		history := historyRaw.(map[string]interface{})
+		items := history["items"].([]interface{})
+		historyId, err := strconv.Atoi(history["id"].(string))
+		if err != nil {
+			panic(err.Error())
+		}
+
+		created, err := time.Parse("2006-01-02T15:04:05.000-0700", history["created"].(string))
+		if err != nil {
+			panic(err.Error())
+		}
+
+		for idx, itemRaw := range items {
+			item := itemRaw.(map[string]interface{})
+			author := history["author"].(map[string]interface{})
+
+			var fromString, toString string
+			if item["fromString"] != nil {
+				fromString = item["fromString"].(string)
+			}
+			if item["toString"] != nil {
+				fromString = item["toString"].(string)
+			}
+			changeItem := ChangeItem{
+				AuthorKey:  author["key"].(string),
+				AuthorName: author["displayName"].(string),
+				HistoryId:  historyId,
+				FromString: fromString,
+				ToString:   toString,
+				Field:      item["field"].(string),
+				Created:    created,
+				ItemIndex:  idx,
+			}
+			err = adapter.saveChange(changeItem, selector)
+			if err != nil {
+				panic(err.Error())
+			}
+
+		}
 	}
 }
 

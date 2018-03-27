@@ -34,6 +34,46 @@ func (db *DbAdapter) saveIssue(tableName string, issue map[string]interface{}, s
 	println(key + " is updated")
 	return nil
 }
+
+func (adapter DbAdapter) saveChange(item ChangeItem, selector string) error {
+	_, err := adapter.tx.Exec("INSERT INTO change ("+
+		"created,selector,toString,fromString,author_name,author_key,history_id,item_index,field) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+		item.Created,
+		selector,
+		item.ToString,
+		item.FromString,
+		item.AuthorName,
+		item.AuthorKey,
+		item.HistoryId,
+		item.ItemIndex,
+		item.Field)
+	return err
+}
+
+func (db *DbAdapter) saveChangeItem(issue map[string]interface{}, selector string) error {
+	content, err := json.Marshal(issue);
+	if err != nil {
+		return err
+	}
+	key := issue["key"].(string)
+	fields := issue["fields"].(map[string]interface{})
+	updatedString := fields["updated"].(string)
+	updated, err := time.Parse("2006-01-02T15:04:05.000-0700", updatedString)
+	if err != nil {
+		panic("Time could not been parsed " + err.Error())
+	}
+
+	if err != nil {
+		print("Json can't be encoded " + err.Error())
+	}
+	_, err = db.tx.Exec("INSERT INTO change (key,value, updated, selector) values ($1,$2,$3,$4) ON CONFLICT (key) DO UPDATE SET value = $2,updated=$3", key, string(content), updated, selector)
+	if err != nil {
+		println("SQL ERROR " + err.Error())
+	}
+	println(key + " is updated")
+	return nil
+}
+
 func (db *DbAdapter) getLastUpdated(tableName string, selector string) (time.Time, error) {
 	result, err := db.Db.Query("select updated from "+tableName+" WHERE selector = $1 order by updated desc limit 1", selector)
 	if err != nil {
