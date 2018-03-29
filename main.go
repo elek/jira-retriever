@@ -40,6 +40,9 @@ type ChangeItem struct {
 	Field      string
 }
 
+type Issue struct {
+	Raw map[string]interface{}
+}
 var rootCmd = &cobra.Command{
 	Use:   "jira-retriever",
 	Short: "Script to get latest changes from jira project",
@@ -101,7 +104,7 @@ func process(config JiraConfig, dbAdapter DbAdapter) {
 			panic("Transaction couldn't been started")
 		}
 		for r := 0; r < len(jsonResult.Issues); r++ {
-			dbAdapter.saveIssue(jsonResult.Issues[r])
+			dbAdapter.saveIssue(Issue{Raw: jsonResult.Issues[r]})
 			processHistory(dbAdapter, jsonResult.Issues[r]);
 		}
 		err = dbAdapter.Commit()

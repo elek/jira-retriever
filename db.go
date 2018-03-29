@@ -56,14 +56,15 @@ func init() {
 	rootCmd.AddCommand(toDbCmd)
 }
 
-func (db *DbAdapter) saveIssue(issue map[string]interface{}) error {
+func (db *DbAdapter) saveIssue(issue Issue) error {
+	rawIssue := issue.Raw
 	selector := "default"
-	content, err := json.Marshal(issue);
+	content, err := json.Marshal(rawIssue);
 	if err != nil {
 		return err
 	}
-	key := issue["key"].(string)
-	fields := issue["fields"].(map[string]interface{})
+	key := rawIssue["key"].(string)
+	fields := rawIssue["fields"].(map[string]interface{})
 	updatedString := fields["updated"].(string)
 	updated, err := time.Parse("2006-01-02T15:04:05.000-0700", updatedString)
 	if err != nil {
