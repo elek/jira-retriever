@@ -4,14 +4,59 @@ import (
 	"database/sql"
 	"time"
 	"encoding/json"
+	"github.com/spf13/cobra"
 )
+
+type PostgresConfig struct {
+	Host     string
+	Username string
+	Password string
+	Db       string
+	Table    string
+}
+
 
 type DbAdapter struct {
 	Db *sql.DB
 	tx *sql.Tx
 }
 
-func (db *DbAdapter) saveIssue(tableName string, issue map[string]interface{}, selector string) error {
+func init() {
+	pgConfig := PostgresConfig{}
+
+	var toDbCmd = &cobra.Command{
+		Use:   "todb",
+		Short: "Save latest changes to postgresql db.",
+		Run: func(cmd *cobra.Command, args []string) {
+			db, err := sql.Open("postgres", "postgres://"+pgConfig.Username+":"+pgConfig.Password+"@"+pgConfig.Host+"/"+pgConfig.Db+"?sslmode=disable")
+			if err != nil {
+				panic("Can' open database " + err.Error())
+			}
+			defer db.Close()
+
+			dbAdapter := DbAdapter{Db: db}
+			config := JiraConfig{
+				Url:       cmd.Flag("jurl").Value.String(),
+				Username:  cmd.Flag("jusername").Value.String(),
+				Password:  cmd.Flag("jpassword").Value.String(),
+				JQL:       cmd.Flag("jql").Value.String(),
+				RateLimit: 10,
+			}
+			process(config, dbAdapter)
+
+		},
+	}
+
+	toDbCmd.Flags().StringVar(&pgConfig.Host, "pgserver", "localhost", "Postgres server host")
+	toDbCmd.Flags().StringVar(&pgConfig.Username, "pgusername", "postgres", "Postgres username")
+	toDbCmd.Flags().StringVar(&pgConfig.Password, "pgpassword", "", "Postgres password")
+	toDbCmd.Flags().StringVar(&pgConfig.Db, "pgdb", "jira", "Postgres database")
+	toDbCmd.Flags().StringVar(&pgConfig.Table, "pgtable", "", "Postgres database")
+
+	rootCmd.AddCommand(toDbCmd)
+}
+
+func (db *DbAdapter) saveIssue(issue map[string]interface{}, selector string) error {
 	content, err := json.Marshal(issue);
 	if err != nil {
 		return err
@@ -27,7 +72,7 @@ func (db *DbAdapter) saveIssue(tableName string, issue map[string]interface{}, s
 	if err != nil {
 		print("Json can't be encoded " + err.Error())
 	}
-	_, err = db.tx.Exec("INSERT INTO "+tableName+" (key,value, updated, selector) values ($1,$2,$3,$4) ON CONFLICT (key) DO UPDATE SET value = $2,updated=$3", key, string(content), updated, selector)
+	_, err = db.tx.Exec("INSERT INTO issue (key,value, updated, selector) values ($1,$2,$3,$4) ON CONFLICT (key) DO UPDATE SET value = $2,updated=$3", key, string(content), updated, selector)
 	if err != nil {
 		println("SQL ERROR " + err.Error())
 	}
@@ -74,8 +119,8 @@ func (db *DbAdapter) saveChangeItem(issue map[string]interface{}, selector strin
 	return nil
 }
 
-func (db *DbAdapter) getLastUpdated(tableName string, selector string) (time.Time, error) {
-	result, err := db.Db.Query("select updated from "+tableName+" WHERE selector = $1 order by updated desc limit 1", selector)
+func (db *DbAdapter) getLastUpdated(selector string) (time.Time, error) {
+	result, err := db.Db.Query("select updated from issue WHERE selector = $1 order by updated desc limit 1", selector)
 	if err != nil {
 		return time.Now(), err
 	}

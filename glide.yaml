@@ -2,3 +2,6 @@ package: .
 import:
 - package: github.com/lib/pq
 - package: github.com/namsral/flag
+- package: github.com/spf13/cobra
+  subpackages:
+  - cobra

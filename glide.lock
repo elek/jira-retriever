@@ -1,5 +1,5 @@
-hash: af245d57c52b3503d88e7f72963cc148c9e2b329a1db1d9d6031e92be66f2540
-updated: 2018-03-28T00:22:21.694895077+02:00
+hash: 29aed0e6d55f8cfaa29c043fe11162eba2a0c8b95b91a3fd6d38b626ce8ca1b7
+updated: 2018-03-29T13:06:21.557178826+02:00
 imports:
 - name: github.com/lib/pq
   version: d34b9ff171c21ad295489235aec8b6626023cd04
@@ -7,4 +7,8 @@ imports:
   - oid
 - name: github.com/namsral/flag
   version: 67f268f20922975c067ed799e4be6bacf152208c
+- name: github.com/spf13/cobra
+  version: a1f051bc3eba734da4772d60e2d677f47cf93ef4
+  subpackages:
+  - cobra
 testImports: []

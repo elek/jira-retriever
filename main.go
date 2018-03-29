@@ -5,15 +5,13 @@ import (
 	"io/ioutil"
 	"encoding/json"
 	_ "github.com/lib/pq"
-	"database/sql"
 	"net/url"
 	"time"
 	"strconv"
-	"github.com/namsral/flag"
+	"github.com/spf13/cobra"
 )
 
-type config struct {
-}
+
 
 type JiraQueryResult struct {
 	ErrorMessages []string
@@ -24,17 +22,11 @@ type JiraQueryResult struct {
 }
 
 type JiraConfig struct {
-	Url      string
-	Username string
-	Password string
-}
-
-type PostgresConfig struct {
-	Host     string
-	Username string
-	Password string
-	Db       string
-	Table    string
+	Url       string
+	Username  string
+	Password  string
+	RateLimit int
+	JQL       string
 }
 
 type ChangeItem struct {
@@ -48,49 +40,43 @@ type ChangeItem struct {
 	Field      string
 }
 
+var rootCmd = &cobra.Command{
+	Use:   "jira-retriever",
+	Short: "Script to get latest changes from jira project",
+	Run: func(cmd *cobra.Command, args []string) {
+		cmd.Help()
+	},
+}
+
 func main() {
+
+	rootCmd.PersistentFlags().String("jurl", "http://localhost", "Base url for the jira API")
+	rootCmd.PersistentFlags().String("jusername", "username", "Username for the jira")
+	rootCmd.PersistentFlags().String("jpassword", "password", "Password for the jira")
+
+	rootCmd.PersistentFlags().String("jql", "", "Custom JQL fragment to add to the query")
+
+	rootCmd.Execute()
+}
+
+func process(config JiraConfig, dbAdapter DbAdapter) {
 	selector := "default"
-	var ratelimit int
-	var queryFragment string = ""
-	pgConfig := PostgresConfig{}
-	jiraConfig := JiraConfig{}
-	flag.StringVar(&pgConfig.Host, "pgserver", "localhost", "Postgres server host")
-	flag.StringVar(&pgConfig.Username, "pgusername", "username", "Postgres username")
-	flag.StringVar(&pgConfig.Password, "pgpassword", "password", "Postgres password")
-	flag.StringVar(&pgConfig.Db, "pgdb", "database", "Postgres database")
-	flag.StringVar(&pgConfig.Table, "pgtable", "jiraissues", "Postgres database")
-
-	flag.StringVar(&jiraConfig.Url, "jurl", "http://localhost", "Base url for the jira API")
-	flag.StringVar(&jiraConfig.Username, "jusername", "username", "Username for the jira")
-	flag.StringVar(&jiraConfig.Password, "jpassword", "password", "Password for the jira")
-
-	flag.StringVar(&selector, "selector", "default", "Selector for the postgres Db")
-	flag.IntVar(&ratelimit, "ratelimit", 10, "Limit the requests to 1 request/ratelimit sec.")
-	flag.StringVar(&queryFragment, "jql", "", "Custom JQL fragment to add to the query")
-	flag.Parse()
-	db, err := sql.Open("postgres", "postgres://"+pgConfig.Username+":"+pgConfig.Password+"@"+pgConfig.Host+"/"+pgConfig.Db+"?sslmode=disable")
-	if err != nil {
-		panic("Can' open database " + err.Error())
-	}
-	defer db.Close()
-
-	dbAdapter := DbAdapter{Db: db}
 
 	lastJiraCall := time.Time{}
 	queryLoop := true
 	for queryLoop == true {
-		lastUpdated, err := dbAdapter.getLastUpdated(pgConfig.Table, selector)
+		lastUpdated, err := dbAdapter.getLastUpdated(selector)
 		if err != nil {
 			panic("Last update can' be determined " + err.Error())
 		}
 
 		//throttle the queries
 		duration := time.Since(lastJiraCall)
-		if duration.Seconds() < float64(ratelimit) {
-			time.Sleep(time.Duration(ratelimit)*time.Second - duration)
+		if duration.Seconds() < float64(config.RateLimit) {
+			time.Sleep(time.Duration(config.RateLimit)*time.Second - duration)
 		}
 
-		jsonContent := read_query(lastUpdated, jiraConfig, queryFragment)
+		jsonContent := readQuery(lastUpdated, config, config.JQL)
 		if err != nil {
 			panic("Can't load the jira json from the server API call: " + err.Error())
 		}
@@ -116,12 +102,12 @@ func main() {
 			panic("Transaction couldn't been started")
 		}
 		for r := 0; r < len(jsonResult.Issues); r++ {
-			dbAdapter.saveIssue(pgConfig.Table, jsonResult.Issues[r], selector)
+			dbAdapter.saveIssue(jsonResult.Issues[r], selector)
 			processHistory(dbAdapter, jsonResult.Issues[r], selector);
 		}
 		err = dbAdapter.Commit()
 		if err != nil {
-			panic("Commiting to the database was unsuccesfull " + err.Error())
+			panic("Committing to the database was unsuccesfull " + err.Error())
 		}
 		queryLoop = jsonResult.MaxResults < jsonResult.Total
 	}
@@ -174,7 +160,7 @@ func processHistory(adapter DbAdapter, issue map[string]interface{}, selector st
 	}
 }
 
-func read_query(lastUpdated time.Time, jiraConfig JiraConfig, queryFragment string) []byte {
+func readQuery(lastUpdated time.Time, jiraConfig JiraConfig, queryFragment string) []byte {
 	jiraBaseUrl := jiraConfig.Url
 	jiraUrl := jiraBaseUrl + "/rest/api/2/search"
 	sinceMs := lastUpdated.UnixNano() / 1000000
