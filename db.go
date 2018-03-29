@@ -42,7 +42,7 @@ func init() {
 				JQL:       cmd.Flag("jql").Value.String(),
 				RateLimit: 10,
 			}
-			process(config, dbAdapter)
+			process(config, &dbAdapter)
 
 		},
 	}
@@ -142,4 +142,8 @@ func (db *DbAdapter) Begin() error {
 	tx, err := db.Db.Begin()
 	db.tx = tx
 	return err
+}
+
+func (db *DbAdapter) Finish() error {
+	return nil
 }

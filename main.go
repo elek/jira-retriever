@@ -11,8 +11,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-
-
 type JiraQueryResult struct {
 	ErrorMessages []string
 	StartAt       int
@@ -30,19 +28,31 @@ type JiraConfig struct {
 }
 
 type ChangeItem struct {
-	HistoryId  int
-	ItemIndex  int
-	FromString string
-	ToString   string
-	AuthorKey  string
-	AuthorName string
-	Created    time.Time
-	Field      string
+	IssueKey     string
+	IssueSummary string
+	HistoryId    int
+	ItemIndex    int
+	FromString   string
+	ToString     string
+	AuthorKey    string
+	AuthorName   string
+	Created      time.Time
+	Field        string
+}
+
+type Adapter interface {
+	saveIssue(issue Issue) error
+	saveChange(item ChangeItem) error
+	getLastUpdated() (time.Time, error)
+	Commit() error
+	Begin() error
+	Finish() error
 }
 
 type Issue struct {
 	Raw map[string]interface{}
 }
+
 var rootCmd = &cobra.Command{
 	Use:   "jira-retriever",
 	Short: "Script to get latest changes from jira project",
@@ -62,12 +72,12 @@ func main() {
 	rootCmd.Execute()
 }
 
-func process(config JiraConfig, dbAdapter DbAdapter) {
+func process(config JiraConfig, adapter Adapter) {
 
 	lastJiraCall := time.Time{}
 	queryLoop := true
 	for queryLoop == true {
-		lastUpdated, err := dbAdapter.getLastUpdated()
+		lastUpdated, err := adapter.getLastUpdated()
 		if err != nil {
 			panic("Last update can' be determined " + err.Error())
 		}
@@ -99,23 +109,24 @@ func process(config JiraConfig, dbAdapter DbAdapter) {
 			return
 		}
 
-		err = dbAdapter.Begin()
+		err = adapter.Begin()
 		if err != nil {
 			panic("Transaction couldn't been started")
 		}
 		for r := 0; r < len(jsonResult.Issues); r++ {
-			dbAdapter.saveIssue(Issue{Raw: jsonResult.Issues[r]})
-			processHistory(dbAdapter, jsonResult.Issues[r]);
+			adapter.saveIssue(Issue{Raw: jsonResult.Issues[r]})
+			processHistory(lastUpdated, adapter, jsonResult.Issues[r]);
 		}
-		err = dbAdapter.Commit()
+		err = adapter.Commit()
 		if err != nil {
 			panic("Committing to the database was unsuccesfull " + err.Error())
 		}
 		queryLoop = jsonResult.MaxResults < jsonResult.Total
 	}
+	adapter.Finish()
 }
 
-func processHistory(adapter DbAdapter, issue map[string]interface{}) {
+func processHistory(fromTime time.Time, adapter Adapter, issue map[string]interface{}) {
 
 	changelog := issue["changelog"].(map[string]interface{})
 	histories := changelog["histories"].([]interface{})
@@ -131,31 +142,36 @@ func processHistory(adapter DbAdapter, issue map[string]interface{}) {
 		if err != nil {
 			panic(err.Error())
 		}
+		if created.After(fromTime) {
 
-		for idx, itemRaw := range items {
-			item := itemRaw.(map[string]interface{})
-			author := history["author"].(map[string]interface{})
+			for idx, itemRaw := range items {
+				item := itemRaw.(map[string]interface{})
+				author := history["author"].(map[string]interface{})
 
-			var fromString, toString string
-			if item["fromString"] != nil {
-				fromString = item["fromString"].(string)
-			}
-			if item["toString"] != nil {
-				fromString = item["toString"].(string)
-			}
-			changeItem := ChangeItem{
-				AuthorKey:  author["key"].(string),
-				AuthorName: author["displayName"].(string),
-				HistoryId:  historyId,
-				FromString: fromString,
-				ToString:   toString,
-				Field:      item["field"].(string),
-				Created:    created,
-				ItemIndex:  idx,
-			}
-			err = adapter.saveChange(changeItem)
-			if err != nil {
-				panic(err.Error())
+				var fromString, toString string
+				if item["fromString"] != nil {
+					fromString = item["fromString"].(string)
+				}
+				if item["toString"] != nil {
+					toString = item["toString"].(string)
+				}
+
+				changeItem := ChangeItem{
+					IssueKey:     issue["key"].(string),
+					IssueSummary: (issue["fields"].(map[string]interface{})["summary"]).(string),
+					AuthorKey:    author["key"].(string),
+					AuthorName:   author["displayName"].(string),
+					HistoryId:    historyId,
+					FromString:   fromString,
+					ToString:     toString,
+					Field:        item["field"].(string),
+					Created:      created,
+					ItemIndex:    idx,
+				}
+				err = adapter.saveChange(changeItem)
+				if err != nil {
+					panic(err.Error())
+				}
 			}
 
 		}
