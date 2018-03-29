@@ -60,12 +60,11 @@ func main() {
 }
 
 func process(config JiraConfig, dbAdapter DbAdapter) {
-	selector := "default"
 
 	lastJiraCall := time.Time{}
 	queryLoop := true
 	for queryLoop == true {
-		lastUpdated, err := dbAdapter.getLastUpdated(selector)
+		lastUpdated, err := dbAdapter.getLastUpdated()
 		if err != nil {
 			panic("Last update can' be determined " + err.Error())
 		}
@@ -84,7 +83,7 @@ func process(config JiraConfig, dbAdapter DbAdapter) {
 
 		var jsonResult JiraQueryResult
 
-		err = json.Unmarshal(jsonContent, &jsonResult);
+		err = json.Unmarshal(jsonContent, &jsonResult)
 		if err != nil {
 			println("Json can't be parsed " + err.Error())
 		}
@@ -102,8 +101,8 @@ func process(config JiraConfig, dbAdapter DbAdapter) {
 			panic("Transaction couldn't been started")
 		}
 		for r := 0; r < len(jsonResult.Issues); r++ {
-			dbAdapter.saveIssue(jsonResult.Issues[r], selector)
-			processHistory(dbAdapter, jsonResult.Issues[r], selector);
+			dbAdapter.saveIssue(jsonResult.Issues[r])
+			processHistory(dbAdapter, jsonResult.Issues[r]);
 		}
 		err = dbAdapter.Commit()
 		if err != nil {
@@ -113,7 +112,7 @@ func process(config JiraConfig, dbAdapter DbAdapter) {
 	}
 }
 
-func processHistory(adapter DbAdapter, issue map[string]interface{}, selector string) {
+func processHistory(adapter DbAdapter, issue map[string]interface{}) {
 
 	changelog := issue["changelog"].(map[string]interface{})
 	histories := changelog["histories"].([]interface{})
@@ -151,7 +150,7 @@ func processHistory(adapter DbAdapter, issue map[string]interface{}, selector st
 				Created:    created,
 				ItemIndex:  idx,
 			}
-			err = adapter.saveChange(changeItem, selector)
+			err = adapter.saveChange(changeItem)
 			if err != nil {
 				panic(err.Error())
 			}
