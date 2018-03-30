@@ -42,7 +42,7 @@ func init() {
 				JQL:       cmd.Flag("jql").Value.String(),
 				RateLimit: 10,
 			}
-			process(config, &dbAdapter)
+			process(&config, &dbAdapter)
 
 		},
 	}
@@ -56,16 +56,15 @@ func init() {
 	rootCmd.AddCommand(toDbCmd)
 }
 
-func (db *DbAdapter) saveIssue(issue Issue) error {
-	rawIssue := issue.Raw
+func (db *DbAdapter) saveIssue(issueItem JiraItem) error {
+	issue := issueItem.Issue
 	selector := "default"
-	content, err := json.Marshal(rawIssue);
+	content, err := json.Marshal(issue);
 	if err != nil {
 		return err
 	}
-	key := rawIssue["key"].(string)
-	fields := rawIssue["fields"].(map[string]interface{})
-	updatedString := fields["updated"].(string)
+	key := issue.Key
+	updatedString := issue.Fields["updated"].(string)
 	updated, err := time.Parse("2006-01-02T15:04:05.000-0700", updatedString)
 	if err != nil {
 		panic("Time could not been parsed " + err.Error())
@@ -96,6 +95,10 @@ func (adapter DbAdapter) saveChange(item ChangeItem) error {
 		item.ItemIndex,
 		item.Field)
 	return err
+}
+
+func (db *DbAdapter) saveComment(comment CommentItem) error {
+	return nil
 }
 
 func (db *DbAdapter) saveChangeItem(issue map[string]interface{}, selector string) error {
