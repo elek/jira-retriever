@@ -61,8 +61,11 @@ type ChangeItem struct {
 	Field        string
 }
 
+var timeFormat = "2006-01-02T15:04:05.000-0700"
+
+
 func JiraFromJson(data jiradata.Issue) JiraItem {
-	created, err := time.Parse("2006-01-02T15:04:05.000-0700", data.Fields["created"].(string))
+	created, err := time.Parse(timeFormat, data.Fields["created"].(string))
 	if err != nil {
 		panic(err)
 	}
@@ -120,10 +123,6 @@ func process(config *JiraConfig, adapter Adapter) {
 	queryLoop := true
 	for queryLoop == true {
 
-		if err != nil {
-			panic("Last update can' be determined " + err.Error())
-		}
-
 		jsonContent := readQuery(lastUpdated, config, config.JQL)
 		if err != nil {
 			panic("Can't load the jira json from the server API call: " + err.Error())
@@ -152,7 +151,7 @@ func process(config *JiraConfig, adapter Adapter) {
 			adapter.saveIssue(JiraFromJson(*searchResults.Issues[r]))
 			processHistory(lastUpdated, adapter, searchResults.Issues[r]);
 			processComments(lastUpdated, adapter, searchResults.Issues[r]);
-			updated, err := time.Parse("2006-01-02T15:04:05.000-0700", searchResults.Issues[r].Fields["updated"].(string))
+			updated, err := time.Parse(timeFormat, searchResults.Issues[r].Fields["updated"].(string))
 			if err != nil {
 				panic(err.Error())
 			}
@@ -185,7 +184,7 @@ func processComments(fromTime time.Time, adapter Adapter, issue *jiradata.Issue)
 	}
 
 	for _, comment := range comments {
-		created, err := time.Parse("2006-01-02T15:04:05.000-0700", comment.Created)
+		created, err := time.Parse(timeFormat, comment.Created)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -204,7 +203,7 @@ func processComments(fromTime time.Time, adapter Adapter, issue *jiradata.Issue)
 
 func processHistory(fromTime time.Time, adapter Adapter, issue *jiradata.Issue) {
 	for _, history := range issue.Changelog.Histories {
-		created, err := time.Parse("2006-01-02T15:04:05.000-0700", history.Created)
+		created, err := time.Parse(timeFormat, history.Created)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -247,7 +246,7 @@ func readQuery(lastUpdated time.Time, jiraConfig *JiraConfig, queryFragment stri
 	}
 	query := "updated > " + strconv.FormatInt(sinceMs, 10) + " ORDER BY updated ASC"
 	if len(queryFragment) > 0 {
-		query = queryFragment + " AND " + query
+		query = "(" + queryFragment + ") AND " + query
 	}
 	parameter := url.Values{"jql": []string{query}, "expand": []string{"changelog,comments"}, "fields": []string{"*all"}}
 
