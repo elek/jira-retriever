@@ -35,7 +35,7 @@ func init() {
 			defer db.Close()
 
 			dbAdapter := DbAdapter{Db: db}
-			config := JiraConfig{
+			config := JiraClient{
 				Url:       cmd.Flag("jurl").Value.String(),
 				Username:  cmd.Flag("jusername").Value.String(),
 				Password:  cmd.Flag("jpassword").Value.String(),
@@ -56,9 +56,8 @@ func init() {
 	rootCmd.AddCommand(toDbCmd)
 }
 
-func (db *DbAdapter) saveIssue(issueItem JiraItem) error {
+func (db *DbAdapter) saveIssue(issueItem JiraItem, selector string) error {
 	issue := issueItem.Issue
-	selector := "default"
 	content, err := json.Marshal(issue);
 	if err != nil {
 		return err
@@ -81,8 +80,7 @@ func (db *DbAdapter) saveIssue(issueItem JiraItem) error {
 	return nil
 }
 
-func (adapter DbAdapter) saveChange(item ChangeItem) error {
-	selector := "default"
+func (adapter DbAdapter) saveChange(item ChangeItem, selector string) error {
 	_, err := adapter.tx.Exec("INSERT INTO change ("+
 		"created,selector,toString,fromString,author_name,author_key,history_id,item_index,field) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
 		item.Created,
@@ -97,7 +95,7 @@ func (adapter DbAdapter) saveChange(item ChangeItem) error {
 	return err
 }
 
-func (db *DbAdapter) saveComment(comment CommentItem) error {
+func (db *DbAdapter) saveComment(comment CommentItem, selector string) error {
 	return nil
 }
 
@@ -125,8 +123,7 @@ func (db *DbAdapter) saveChangeItem(issue map[string]interface{}, selector strin
 	return nil
 }
 
-func (db *DbAdapter) getLastUpdated() (time.Time, error) {
-	selector := "default"
+func (db *DbAdapter) getLastUpdated(selector string) (time.Time, error) {
 	result, err := db.Db.Query("select updated from issue WHERE selector = $1 order by updated desc limit 1", selector)
 	if err != nil {
 		return time.Now(), err
@@ -136,6 +133,9 @@ func (db *DbAdapter) getLastUpdated() (time.Time, error) {
 	result.Scan(&time)
 	return time, nil
 
+}
+func (db *DbAdapter) saveLastUpdated(lastUpdated time.Time, selector string) error {
+	return nil
 }
 
 func (db *DbAdapter) Commit() error {

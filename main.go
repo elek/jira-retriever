@@ -8,6 +8,10 @@ import (
 	"strconv"
 	"github.com/spf13/cobra"
 	"github.com/elek/jira-retriever/jiradata"
+	"crypto/sha1"
+	"fmt"
+	"strings"
+	"log"
 )
 
 
@@ -81,12 +85,16 @@ func JiraFromJson(data jiradata.Issue) JiraItem {
 
 
 type Adapter interface {
-	saveIssue(issue JiraItem) error
-	saveChange(item ChangeItem) error
-	saveComment(item CommentItem) error
-	getLastUpdated() (time.Time, error)
+	saveIssue(issue JiraItem, selector string) error
+	saveChange(item ChangeItem, selector string) error
+	saveComment(item CommentItem, selector string) error
+
+	getLastUpdated(selector string) (time.Time, error)
+	saveLastUpdated(lastUpdated time.Time, selector string) error
+
 	Commit() error
 	Begin() error
+
 	Finish() error
 }
 
@@ -106,20 +114,32 @@ func main() {
 	rootCmd.PersistentFlags().String("jusername", "username", "Username for the jira")
 	rootCmd.PersistentFlags().String("jpassword", "password", "Password for the jira")
 	rootCmd.PersistentFlags().String("jql", "", "Custom JQL fragment to add to the query")
-	rootCmd.PersistentFlags().Int64("since", 0, "Define timebox in epoch")
+	rootCmd.PersistentFlags().String("since", "last", "Define timebox to the jira quey. Could be a "+
+		"1.) unix epoch 2.) last (to check the results since the last run")
 
 	rootCmd.Execute()
 }
 
-func process(config *JiraConfig, adapter Adapter) {
+func process(config *JiraClient, adapter Adapter) {
 	var err error
-	lastUpdated := config.Since
-	if lastUpdated.IsZero() {
-		lastUpdated, err = adapter.getLastUpdated()
-		if err != nil {
-			panic(err)
+	var lastUpdated time.Time
+	selector := getHash(config.JQL)
+	epoch, err := strconv.Atoi(config.Since)
+	if err != nil {
+		if config.Since == "" || config.Since == "last" {
+			lastUpdated, err = adapter.getLastUpdated(selector)
+			if err != nil {
+				panic(err)
+			}
+		} else {
+			panic("Unknown since value")
 		}
+
+	} else {
+		lastUpdated = time.Unix(int64(epoch), 0)
 	}
+
+	log.Print(fmt.Sprintf("Checking jira changes since %s", lastUpdated.Format(time.RFC3339)))
 	queryLoop := true
 	for queryLoop == true {
 
@@ -135,10 +155,10 @@ func process(config *JiraConfig, adapter Adapter) {
 			println("Json can't be parsed to typed object " + err.Error())
 		}
 
-		if (len(searchResults.ErrorMessages) > 0) {
+		if len(searchResults.ErrorMessages) > 0 {
 			panic(searchResults.ErrorMessages[0])
 		}
-		if (searchResults.MaxResults == 0) {
+		if searchResults.MaxResults == 0 {
 			print("No more results")
 			return
 		}
@@ -148,9 +168,10 @@ func process(config *JiraConfig, adapter Adapter) {
 			panic("Transaction couldn't been started")
 		}
 		for r := 0; r < len(searchResults.Issues); r++ {
-			adapter.saveIssue(JiraFromJson(*searchResults.Issues[r]))
-			processHistory(lastUpdated, adapter, searchResults.Issues[r]);
-			processComments(lastUpdated, adapter, searchResults.Issues[r]);
+			adapter.saveIssue(JiraFromJson(*searchResults.Issues[r]), selector)
+			processHistory(lastUpdated, adapter, searchResults.Issues[r], selector);
+			processComments(lastUpdated, adapter, searchResults.Issues[r], selector);
+
 			updated, err := time.Parse(timeFormat, searchResults.Issues[r].Fields["updated"].(string))
 			if err != nil {
 				panic(err.Error())
@@ -166,10 +187,17 @@ func process(config *JiraConfig, adapter Adapter) {
 		}
 		queryLoop = searchResults.MaxResults < searchResults.Total
 	}
+	adapter.saveLastUpdated(lastUpdated, selector)
 	adapter.Finish()
 }
+func getHash(input string) string {
+	h := sha1.New()
+	h.Write([]byte(input))
+	bs := h.Sum(nil)
+	return strings.Trim(fmt.Sprintf("%x\n", bs), "\n")
+}
 
-func processComments(fromTime time.Time, adapter Adapter, issue *jiradata.Issue) {
+func processComments(fromTime time.Time, adapter Adapter, issue *jiradata.Issue, selector string) {
 	commentPage := issue.Fields["comment"].(map[string]interface{})
 	var comments []jiradata.Comment
 
@@ -196,12 +224,12 @@ func processComments(fromTime time.Time, adapter Adapter, issue *jiradata.Issue)
 					Created:      created,
 				},
 				Comment: comment,
-			})
+			}, selector)
 		}
 	}
 }
 
-func processHistory(fromTime time.Time, adapter Adapter, issue *jiradata.Issue) {
+func processHistory(fromTime time.Time, adapter Adapter, issue *jiradata.Issue, selector string) {
 	for _, history := range issue.Changelog.Histories {
 		created, err := time.Parse(timeFormat, history.Created)
 		if err != nil {
@@ -229,7 +257,7 @@ func processHistory(fromTime time.Time, adapter Adapter, issue *jiradata.Issue) 
 					Field:      item.Field,
 					ItemIndex:  idx,
 				}
-				err = adapter.saveChange(changeItem)
+				err = adapter.saveChange(changeItem, selector)
 				if err != nil {
 					panic(err.Error())
 				}
@@ -239,7 +267,7 @@ func processHistory(fromTime time.Time, adapter Adapter, issue *jiradata.Issue) 
 	}
 }
 
-func readQuery(lastUpdated time.Time, jiraConfig *JiraConfig, queryFragment string) []byte {
+func readQuery(lastUpdated time.Time, jiraConfig *JiraClient, queryFragment string) []byte {
 	sinceMs := lastUpdated.UnixNano() / 1000000
 	if sinceMs < 0 {
 		sinceMs = 0

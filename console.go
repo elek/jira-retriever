@@ -9,7 +9,9 @@ import (
 )
 
 type ConsoleAdapter struct {
-	Changes []WithBaseIssueInformation
+	Changes   []WithBaseIssueInformation
+	selector  string
+	fileState FileState
 }
 
 func init() {
@@ -31,26 +33,30 @@ func init() {
 	rootCmd.AddCommand(consoleCmd)
 }
 
-func (consoleAdapter *ConsoleAdapter) saveIssue(issue JiraItem) error {
+func (consoleAdapter *ConsoleAdapter) saveIssue(issue JiraItem, selector string) error {
 	if issue.Issue.Fields["created"] == issue.Issue.Fields["updated"] {
 		consoleAdapter.Changes = append(consoleAdapter.Changes, &issue)
 	}
 	return nil
 }
 
-func (consoleAdapter *ConsoleAdapter) saveChange(item ChangeItem) error {
+func (consoleAdapter *ConsoleAdapter) saveChange(item ChangeItem, selector string) error {
 	consoleAdapter.Changes = append(consoleAdapter.Changes, &item)
 	return nil
 }
 
-func (consoleAdapter *ConsoleAdapter) saveComment(comment CommentItem) error {
+func (consoleAdapter *ConsoleAdapter) saveComment(comment CommentItem, selector string) error {
 	consoleAdapter.Changes = append(consoleAdapter.Changes, &comment)
 	return nil
 }
 
-func (consoleAdapter *ConsoleAdapter) getLastUpdated() (time.Time, error) {
-	return time.Now().Add(-24 * time.Hour), nil
-
+func (consoleAdapter *ConsoleAdapter) getLastUpdated(selector string) (time.Time, error) {
+	state := CreateFileState(selector)
+	return state.read()
+}
+func (consoleAdapter *ConsoleAdapter) saveLastUpdated(lastUpdated time.Time, selector string) error {
+	state := CreateFileState(selector)
+	return state.write(lastUpdated)
 }
 
 func (consoleAdapter *ConsoleAdapter) Commit() error {
@@ -60,7 +66,6 @@ func (consoleAdapter *ConsoleAdapter) Begin() error {
 	return nil
 }
 func (consoleAdapter *ConsoleAdapter) Finish() error {
-
 	sort.Slice(consoleAdapter.Changes, func(a int, b int) bool {
 		return consoleAdapter.Changes[a].GetCreated().Before(consoleAdapter.Changes[b].GetCreated())
 	})
@@ -114,5 +119,6 @@ func (consoleAdapter *ConsoleAdapter) Finish() error {
 		}
 
 	}
+
 	return nil
 }

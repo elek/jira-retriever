@@ -9,37 +9,33 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type JiraConfig struct {
+type JiraClient struct {
 	Url          string
 	Username     string
 	Password     string
 	RateLimit    int
 	JQL          string
-	Since        time.Time
+	Since        string
 	lastJiraCall time.Time
 }
 
-func (jiraConfig *JiraConfig) query(query string) []byte {
+func (jiraConfig *JiraClient) query(query string) []byte {
 	return jiraConfig.queryWithParameters(query, make(map[string][]string))
 }
 
-func FromFlags(cmd *cobra.Command) JiraConfig {
+func FromFlags(cmd *cobra.Command) JiraClient {
 
-	since, _ := strconv.Atoi(cmd.Flag("since").Value.String())
-
-	config := JiraConfig{
+	jira := JiraClient{
 		Url:       cmd.Flag("jurl").Value.String(),
 		Username:  cmd.Flag("jusername").Value.String(),
 		Password:  cmd.Flag("jpassword").Value.String(),
 		JQL:       cmd.Flag("jql").Value.String(),
 		RateLimit: 10,
 	}
-	if since > 0 {
-		config.Since = time.Unix(int64(since), 0)
-	}
-	return config
+	jira.Since = cmd.Flag("since").Value.String()
+	return jira
 }
-func (jiraConfig *JiraConfig) queryWithParameters(query string, parameters url.Values) []byte {
+func (jiraConfig *JiraClient) queryWithParameters(query string, parameters url.Values) []byte {
 	jiraBaseUrl := jiraConfig.Url
 	jiraUrl := jiraBaseUrl + "/rest/api/2" + query
 
