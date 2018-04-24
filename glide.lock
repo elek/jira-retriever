@@ -1,14 +1,32 @@
-hash: 29aed0e6d55f8cfaa29c043fe11162eba2a0c8b95b91a3fd6d38b626ce8ca1b7
-updated: 2018-03-29T13:06:21.557178826+02:00
+hash: 5784e7789404b3481ccb5a4a835903a923b084fb1cd85c81b8716849fa9e99a8
+updated: 2018-04-02T11:38:19.638234578+02:00
 imports:
+- name: github.com/inconshreveable/mousetrap
+  version: 76626ae9c91c4f2a10f34cad8ce83ea42c93bb75
 - name: github.com/lib/pq
   version: d34b9ff171c21ad295489235aec8b6626023cd04
   subpackages:
   - oid
 - name: github.com/namsral/flag
   version: 67f268f20922975c067ed799e4be6bacf152208c
+- name: github.com/nlopes/slack
+  version: a5c6ae1924074524898865255ea8418a5677cb63
 - name: github.com/spf13/cobra
   version: a1f051bc3eba734da4772d60e2d677f47cf93ef4
   subpackages:
   - cobra
-testImports: []
+- name: github.com/spf13/pflag
+  version: ee5fd03fd6acfd43e44aea0b4135958546ed8e73
+testImports:
+- name: github.com/davecgh/go-spew
+  version: 8991bc29aa16c548c550c7ff78260e27b9ab7c73
+  subpackages:
+  - spew
+- name: github.com/pmezard/go-difflib
+  version: 792786c7400a136282c1664665ae0a8db921c6c2
+  subpackages:
+  - difflib
+- name: github.com/stretchr/testify
+  version: c679ae2cc0cb27ec3293fea7e254e47386f05d69
+  subpackages:
+  - assert
